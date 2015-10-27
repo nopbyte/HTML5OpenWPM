@@ -119,6 +119,22 @@ class TaskManager:
         thread.daemon = True
         thread.start()
 
+        # read the last used request_id
+        cur = self.db.cursor()
+        query_successful = False
+        while not query_successful:
+            try:
+                cur.execute("SELECT MAX(request_id) from top_url_database")
+                self.db.commit()
+                last_request_id = cur.fetchone()
+                query_successful = True
+            except OperationalError:
+                time.sleep(0.1)
+                pass
+        if not last_request_id:
+            last_request_id = 0
+        self.next_request_id = last_request_id + 1
+
     def _initialize_browsers(self, browser_params):
         """ initialize the browser classes, each with a unique set of parameters """
         browsers = list()
@@ -302,63 +318,6 @@ class TaskManager:
 
     # CRAWLER COMMAND CODE
 
-    def _distribute_command(self, command, index=None, timeout=None, reset=False):
-        """
-        parses command type and issues command(s) to the proper browser
-        <index> specifies the type of command this is:
-        = None  -> first come, first serve
-        =  #    -> index of browser to send command to
-        = *     -> sends command to all browsers
-        = **    -> sends command to all browsers (synchronized)
-        """
-        if index is None:
-            #send to first browser available
-            command_executed = False
-            while True:
-                for browser in self.browsers:
-                    if browser.ready():
-                        browser.current_timeout = timeout
-                        self._start_thread(browser, command, reset)
-                        command_executed = True
-                        break
-                if command_executed:
-                    break
-                time.sleep(SLEEP_CONS)
-
-        elif 0 <= index < len(self.browsers):
-            #send the command to this specific browser
-            while True:
-                if self.browsers[index].ready():
-                    self.browsers[index].current_timeout = timeout
-                    self._start_thread(self.browsers[index], command, reset)
-                    break
-                time.sleep(SLEEP_CONS)
-        elif index == '*':
-            #send the command to all browsers
-            command_executed = [False] * len(self.browsers)
-            while False in command_executed:
-                for i in xrange(len(self.browsers)):
-                    if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = timeout
-                        self._start_thread(self.browsers[i], command, reset)
-                        command_executed[i] = True
-                time.sleep(SLEEP_CONS)
-        elif index == '**':
-            #send the command to all browsers and sync it
-            condition = threading.Condition()  # Used to block threads until ready
-            command_executed = [False] * len(self.browsers)
-            while False in command_executed:
-                for i in xrange(len(self.browsers)):
-                    if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = timeout
-                        self._start_thread(self.browsers[i], command, reset, condition)
-                        command_executed[i] = True
-                time.sleep(SLEEP_CONS)
-            with condition:
-                condition.notifyAll()  # All browsers loaded, tell them to start
-        else:
-            self.logger.info("Command index type is not supported or out of range")
-
     def _start_thread(self, browser, command, reset, condition=None):
         """  starts the command execution thread """
         
@@ -431,27 +390,81 @@ class TaskManager:
                 self.failure_flag = True
                 return
             browser.restart_required = False
-    
-    # DEFINITIONS OF HIGH LEVEL COMMANDS
 
-    def get(self, url, index=None, timeout=60, reset=False):
-        """ goes to a url """
-        self._distribute_command(('GET', url), index, timeout, reset)
-        
-    def browse(self, url, num_links = 2, index=None, timeout=60, reset=False):
-        """ browse a website and visit <num_links> links on the page """
-        self._distribute_command(('BROWSE', url, num_links), index, timeout, reset)
+    def _get_browsers(self, index=None):
+        """
+        Find the list of browsers to send the next command sequence to based on index
+        <index> specifies the type of command sequence this is:
+        = None  -> first come, first serve
+        =  #    -> index of browser to send command sequence to
+        = *     -> sends command sequence to all browsers
+        = **    -> sends command sequence to all browsers (synchronized)
+        """
+        send_to_browsers = []
+        synchronized = False
+        if index is None:
+            # find the first ready browser to send command sequence to
+            first_ready_browser = None
+            while True:
+                for browser in self.browsers:
+                    if browser.ready():
+                        first_ready_browser = browser
+                        break
+                if first_ready_browser:
+                    break
+                time.sleep(SLEEP_CONS)
+            send_to_browsers.append(first_ready_browser)
+        elif 0 <= index < len(self.browsers):
+            # the browser with given index
+            send_to_browsers.append(self.browsers[index])
+        elif index == '*':
+            # all the browsers
+            send_to_browsers = self.browsers
+        elif index == '**':
+            # all the browsers and commands synchronized
+            send_to_browsers = self.browsers
+            synchronized = True
+        else:
+            self.logger.info("Command index type is not supported or out of range")
+        return send_to_browsers, synchronized
 
-    def dump_storage_vectors(self, url, start_time, index=None, timeout=60):
-        """ dumps the local storage vectors (flash, localStorage, cookies) to db """
-        self._distribute_command(('DUMP_STORAGE_VECTORS', url, start_time), index, timeout)
-
-    def dump_profile(self, dump_folder, close_webdriver=False, compress=True, index=None, timeout=120):
-        """ dumps from the profile path to a given file (absolute path) """
-        self._distribute_command(('DUMP_PROF', dump_folder, close_webdriver, compress), index, timeout)
-
-    def extract_links(self, index=None, timeout=30):
-        self._distribute_command(('EXTRACT_LINKS',), index, timeout)
+    def execute_command_sequence(self, command_sequence, index=None):
+        """
+        parses command sequence and issues command(s) to the proper browser
+        """
+        send_to_browsers, synchronized = self._get_browsers(index)
+        for browser in send_to_browsers:
+            browser.set_request_id(self.next_request_id)
+            self.next_request_id += 1
+        if synchronized:
+            for command_tuple in command_sequence:
+                command = command_tuple[0]
+                timeout = command_tuple[1]
+                reset = command_tuple[2]
+                condition = threading.Condition()  # Used to block threads until ready
+                command_executed = [False] * len(send_to_browsers)
+                while False in command_executed:
+                    for i in xrange(len(send_to_browsers)):
+                        if send_to_browsers[i].ready() and not command_executed[i]:
+                            send_to_browsers[i].current_timeout = timeout
+                            self._start_thread(send_to_browsers[i], command, reset, condition)
+                            command_executed[i] = True
+                    time.sleep(SLEEP_CONS)
+                with condition:
+                    condition.notifyAll()  # All browsers loaded, tell them to start
+        else:
+            for command_tuple in command_sequence:
+                command = command_tuple[0]
+                timeout = command_tuple[1]
+                reset = command_tuple[2]
+                command_executed = [False] * len(send_to_browsers)
+                while False in command_executed:
+                    for i in xrange(len(send_to_browsers)):
+                        if send_to_browsers[i].ready() and not command_executed[i]:
+                            send_to_browsers[i].current_timeout = timeout
+                            self._start_thread(send_to_browsers[i], command, reset)
+                            command_executed[i] = True
+                    time.sleep(SLEEP_CONS)
 
     def close(self, post_process=True):
         """
