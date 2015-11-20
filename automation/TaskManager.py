@@ -135,6 +135,22 @@ class TaskManager:
         thread.daemon = True
         thread.start()
 
+        # read the last used request_id
+        cur = self.db.cursor()
+        query_successful = False
+        while not query_successful:
+            try:
+                cur.execute("SELECT MAX(request_id) from top_url_database")
+                self.db.commit()
+                last_request_id = cur.fetchone()
+                query_successful = True
+            except OperationalError:
+                time.sleep(0.1)
+                pass
+        if not last_request_id:
+            last_request_id = 0
+        self.next_request_id = last_request_id + 1
+
     def _initialize_browsers(self, browser_params):
         """ initialize the browser classes, each with a unique set of parameters """
         browsers = list()
