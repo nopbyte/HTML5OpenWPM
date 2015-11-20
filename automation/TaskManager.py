@@ -109,6 +109,22 @@ class TaskManager:
         cur.execute("INSERT INTO task (description) VALUES (?)", (self.desc,))
         self.db.commit()
         self.task_id = cur.lastrowid
+
+        # read the last used command_sequence_id
+        cur = self.db.cursor()
+        query_successful = False
+        while not query_successful:
+            try:
+                cur.execute("SELECT MAX(command_sequence_id) from top_url_database")
+                self.db.commit()
+                last_command_sequence_id = cur.fetchone()
+                query_successful = True
+            except OperationalError:
+                time.sleep(0.1)
+                pass
+        if not last_command_sequence_id:
+            last_command_sequence_id = 0
+        self.next_command_sequence_id = last_command_sequence_id + 1
         
         # sets up the BrowserManager(s) + associated queues
         self.browsers = self._initialize_browsers(browser_params)  # List of the Browser(s)
@@ -292,19 +308,19 @@ class TaskManager:
         self._kill_aggregators()
         self._kill_loggingserver()
 
-    def _gracefully_fail(self, msg, command):
+    def _gracefully_fail(self, msg, command_sequence):
         """
         Execute shutdown commands before throwing error
         <msg>: an Exception will be raised with this message
         """
         self._shutdown_manager(failure=True)
-        raise CommandExecutionError(msg, command)
+        raise CommandExecutionError(msg, command_sequence)
 
     # CRAWLER COMMAND CODE
 
-    def _distribute_command(self, command, index=None, timeout=None, reset=False):
+    def _distribute_command_sequence(self, command_sequence, index=None):
         """
-        parses command type and issues command(s) to the proper browser
+        issues command sequence to the proper browser
         <index> specifies the type of command this is:
         = None  -> first come, first serve
         =  #    -> index of browser to send command to
@@ -313,53 +329,49 @@ class TaskManager:
         """
         if index is None:
             #send to first browser available
-            command_executed = False
+            command_sequence_executed = False
             while True:
                 for browser in self.browsers:
                     if browser.ready():
-                        browser.current_timeout = timeout
-                        self._start_thread(browser, command, reset)
-                        command_executed = True
+                        self._start_thread(browser, command_sequence)
+                        command_sequence_executed = True
                         break
-                if command_executed:
+                if command_sequence_executed:
                     break
                 time.sleep(SLEEP_CONS)
 
         elif 0 <= index < len(self.browsers):
-            #send the command to this specific browser
+            #send the command sequence to this specific browser
             while True:
                 if self.browsers[index].ready():
-                    self.browsers[index].current_timeout = timeout
-                    self._start_thread(self.browsers[index], command, reset)
+                    self._start_thread(self.browsers[index], command_sequence)
                     break
                 time.sleep(SLEEP_CONS)
         elif index == '*':
-            #send the command to all browsers
-            command_executed = [False] * len(self.browsers)
-            while False in command_executed:
+            #send the command sequence to all browsers
+            command_sequence_executed = [False] * len(self.browsers)
+            while False in command_sequence_executed:
                 for i in xrange(len(self.browsers)):
-                    if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = timeout
-                        self._start_thread(self.browsers[i], command, reset)
-                        command_executed[i] = True
+                    if self.browsers[i].ready() and not command_sequence_executed[i]:
+                        self._start_thread(self.browsers[i], command_sequence)
+                        command_sequence_executed[i] = True
                 time.sleep(SLEEP_CONS)
         elif index == '**':
-            #send the command to all browsers and sync it
+            #send the command sequence to all browsers and sync it
             condition = threading.Condition()  # Used to block threads until ready
-            command_executed = [False] * len(self.browsers)
-            while False in command_executed:
+            command_sequence_executed = [False] * len(self.browsers)
+            while False in command_sequence_executed:
                 for i in xrange(len(self.browsers)):
-                    if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = timeout
-                        self._start_thread(self.browsers[i], command, reset, condition)
-                        command_executed[i] = True
+                    if self.browsers[i].ready() and not command_sequence_executed[i]:
+                        self._start_thread(self.browsers[i], command_sequence, condition)
+                        command_sequence_executed[i] = True
                 time.sleep(SLEEP_CONS)
             with condition:
                 condition.notifyAll()  # All browsers loaded, tell them to start
         else:
             self.logger.info("Command index type is not supported or out of range")
 
-    def _start_thread(self, browser, command, reset, condition=None):
+    def _start_thread(self, browser, command_sequence, condition=None):
         """  starts the command execution thread """
         
         # Check status flags before starting thread
@@ -368,18 +380,23 @@ class TaskManager:
             return
         if self.failure_flag:
             self.logger.debug("TaskManager failure threshold exceeded, raising CommandExecutionError")
-            self._gracefully_fail("TaskManager failure threshold exceeded", command)
+            self._gracefully_fail("TaskManager failure threshold exceeded", command_sequence)
 
-        # Start command execution thread
-        args = (browser, command, reset, condition)
-        thread = threading.Thread(target=self._issue_command, args=args)
+        browser.set_command_sequence_id(self.next_command_sequence_id)
+        self.sock.send(("INSERT INTO top_url_database (crawl_id, command_sequence_id, top_url) VALUES (?,?,?)",
+                        (browser.crawl_id, self.next_command_sequence_id, command_sequence.url)))
+        self.next_command_sequence_id += 1
+
+        # Start command sequence execution thread
+        args = (browser, command_sequence, condition)
+        thread = threading.Thread(target=self._issue_command_sequence, args=args)
         browser.command_thread = thread
         thread.daemon = True
         thread.start()
 
-    def _issue_command(self, browser, command, reset, condition=None):
+    def _issue_command_sequence(self, browser, command_sequence, condition=None):
         """
-        sends command tuple to the BrowserManager
+        parses command tuples from command sequence to send to the BrowserManager
         """
         browser.is_fresh = False  # since we are issuing a command, the BrowserManager is no longer a fresh instance
         
@@ -388,70 +405,64 @@ class TaskManager:
             with condition:
                 condition.wait()
 
-        # passes off command and waits for a success (or failure signal)
-        browser.command_queue.put(command)
-        command_succeeded = 0 #1 success, 0 failure from error, -1 timeout
-        command_arguments = command[1] if len(command) > 1 else None
+        reset = command_sequence.reset
+        for command_tuple in command_sequence:
+            command, timeout = command_tuple
+            browser.current_timeout = timeout
+            # passes off command and waits for a success (or failure signal)
+            browser.command_queue.put(command)
+            command_succeeded = 0 #1 success, 0 failure from error, -1 timeout
+            command_arguments = command[1] if len(command) > 1 else None
 
-        # received reply from BrowserManager, either success signal or failure notice
-        try:
-            status = browser.status_queue.get(True, browser.current_timeout)
-            if status == "OK":
-                command_succeeded = 1
-            else:
-                command_succeeded = 0
-                self.logger.info("BROWSER %i: Received failure status while executing command: %s" % (browser.crawl_id, command[0]))
-        except EmptyQueue:
-            command_succeeded = -1
-            self.logger.info("BROWSER %i: Timeout while executing command, %s, killing browser manager" % (browser.crawl_id, command[0]))
+            # received reply from BrowserManager, either success signal or failure notice
+            try:
+                status = browser.status_queue.get(True, browser.current_timeout)
+                if status == "OK":
+                    command_succeeded = 1
+                else:
+                    command_succeeded = 0
+                    self.logger.info("BROWSER %i: Received failure status while executing command: %s" % (browser.crawl_id, command[0]))
+            except EmptyQueue:
+                command_succeeded = -1
+                self.logger.info("BROWSER %i: Timeout while executing command, %s, killing browser manager" % (browser.crawl_id, command[0]))
 
-        self.sock.send(("INSERT INTO CrawlHistory (crawl_id, command, arguments, bool_success)"
-                        " VALUES (?,?,?,?)",
-                        (browser.crawl_id, command[0], command_arguments, command_succeeded)))
-        
-        if self.closing:
-            return
+            self.sock.send(("INSERT INTO CrawlHistory (crawl_id, command, arguments, bool_success)"
+                            " VALUES (?,?,?,?)",
+                            (browser.crawl_id, command[0], command_arguments, command_succeeded)))
 
-        if command_succeeded != 1:
-            with self.threadlock:
-                self.failurecount += 1
-            if self.failurecount > self.num_browsers * 2 + 10:
-                self.logger.critical("BROWSER %i: Command execution failure pushes failure count above the allowable limit. Setting failure_flag." % browser.crawl_id)
-                self.failure_flag = True
+            if self.closing:
                 return
-            browser.restart_required = True
-        else:
-            with self.threadlock:
-                self.failurecount = 0
-            
-        if browser.restart_required or reset:
+
+            if command_succeeded != 1:
+                with self.threadlock:
+                    self.failurecount += 1
+                if self.failurecount > self.num_browsers * 2 + 10:
+                    self.logger.critical("BROWSER %i: Command execution failure pushes failure count above the allowable limit. Setting failure_flag." % browser.crawl_id)
+                    self.failure_flag = True
+                    return
+                browser.restart_required = True
+            else:
+                with self.threadlock:
+                    self.failurecount = 0
+
+            if browser.restart_required:
+                success = browser.restart_browser_manager(clear_profile = reset)
+                if not success:
+                    self.logger.critical("BROWSER %i: Exceeded the maximum allowable consecutive browser launch failures. Setting failure_flag." % browser.crawl_id)
+                    self.failure_flag = True
+                    return
+                browser.restart_required = False
+        if reset:
             success = browser.restart_browser_manager(clear_profile = reset)
             if not success:
                 self.logger.critical("BROWSER %i: Exceeded the maximum allowable consecutive browser launch failures. Setting failure_flag." % browser.crawl_id)
                 self.failure_flag = True
                 return
             browser.restart_required = False
-    
-    # DEFINITIONS OF HIGH LEVEL COMMANDS
 
-    def get(self, url, index=None, timeout=60, reset=False):
-        """ goes to a url """
-        self._distribute_command(('GET', url), index, timeout, reset)
-        
-    def browse(self, url, num_links = 2, index=None, timeout=60, reset=False):
-        """ browse a website and visit <num_links> links on the page """
-        self._distribute_command(('BROWSE', url, num_links), index, timeout, reset)
-
-    def dump_storage_vectors(self, url, start_time, index=None, timeout=60):
-        """ dumps the local storage vectors (flash, localStorage, cookies) to db """
-        self._distribute_command(('DUMP_STORAGE_VECTORS', url, start_time), index, timeout)
-
-    def dump_profile(self, dump_folder, close_webdriver=False, compress=True, index=None, timeout=120):
-        """ dumps from the profile path to a given file (absolute path) """
-        self._distribute_command(('DUMP_PROF', dump_folder, close_webdriver, compress), index, timeout)
-
-    def extract_links(self, index=None, timeout=30):
-        self._distribute_command(('EXTRACT_LINKS',), index, timeout)
+    def execute_command_sequence(self, command_sequence, index=None):
+        """Executes the command sequence"""
+        self._distribute_command_sequence(command_sequence, index)
 
     def close(self, post_process=True):
         """

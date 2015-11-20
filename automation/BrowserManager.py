@@ -182,6 +182,10 @@ class Browser:
                 self.logger.debug("BROWSER %i: Browser process does not exist" % self.crawl_id)
                 pass
 
+    # set the command sequence id corresponding to the url this browser browses next
+    def set_command_sequence_id(self, command_sequence_id):
+        self.browser_params['command_sequence_id'] = command_sequence_id
+
 def BrowserManager(command_queue, status_queue, browser_params, manager_params, crash_recovery):
     """
     The BrowserManager function runs in each new browser process.
