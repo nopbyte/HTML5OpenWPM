@@ -8,32 +8,31 @@ class CommandSequence:
         self.url = url
         self.reset = reset
         self.commands = []
-        self.start_time = None
+        self.contains_get_or_browse = False
 
     def prepare_for_new_sequence(self, url, reset=False):
         self.url = url
         self.reset = reset
         self.commands = []
-        self.start_time = None
-
-    def set_start_time(self, start_time):
-        self.start_time = start_time
+        self.contains_get_or_browse = False
 
     def get(self, timeout=60):
         """ goes to a url """
         command = ('GET', self.url)
         self.commands.append((command, timeout))
+        self.contains_get_or_browse = True
 
     def browse(self, num_links = 2, timeout=60):
         """ browse a website and visit <num_links> links on the page """
         command = ('BROWSE', self.url, num_links)
         self.commands.append((command, timeout))
+        self.contains_get_or_browse = True
 
     def dump_storage_vectors(self, timeout=60):
         """ dumps the local storage vectors (flash, localStorage, cookies) to db """
-        if self.start_time is None:
+        if not self.contains_get_or_browse:
             raise CommandExecutionError("Not get or browse request preceding the dump storage vectors command", self)
-        command = ('DUMP_STORAGE_VECTORS', self.url, self.start_time)
+        command = ('DUMP_STORAGE_VECTORS', self.url)
         self.commands.append((command, timeout))
 
     def dump_profile(self, dump_folder, close_webdriver=False, compress=True, timeout=120):

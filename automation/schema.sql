@@ -33,6 +33,12 @@ CREATE TABLE IF NOT EXISTS xpath (
     ctime DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(name, url));
 
+CREATE TABLE IF NOT EXISTS site_visits (
+    visit_id INTEGER PRIMARY KEY,
+    crawl_id INTEGER NOT NULL,
+    site_url VARCHAR(500) NOT NULL,
+    FOREIGN KEY(crawl_id) REFERENCES crawl(id));
+
 /* Proxy Tables */
 
 /* TODO: add publix_suffix to db structure */
