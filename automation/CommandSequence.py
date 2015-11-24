@@ -32,7 +32,7 @@ class CommandSequence:
     def dump_storage_vectors(self, timeout=60):
         """ dumps the local storage vectors (flash, localStorage, cookies) to db """
         if self.start_time is None:
-            raise CommandExecutionError("Start time not set", self)
+            raise CommandExecutionError("Not get or browse request preceding the dump storage vectors command", self)
         command = ('DUMP_STORAGE_VECTORS', self.url, self.start_time)
         self.commands.append((command, timeout))
 
