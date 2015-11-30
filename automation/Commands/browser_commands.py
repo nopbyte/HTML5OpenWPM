@@ -183,8 +183,8 @@ def dump_storage_vectors(top_url, start_time, webdriver, browser_params, manager
     # Flash cookies
     flash_cookies = get_flash_cookies(start_time)
     for cookie in flash_cookies:
-        query = ("INSERT INTO flash_cookies (crawl_id, page_url, domain, filename, local_path, \
-                  key, content) VALUES (?,?,?,?,?,?,?)", (browser_params['crawl_id'], top_url, cookie.domain,
+        query = ("INSERT INTO flash_cookies (crawl_id, visit_id, domain, filename, local_path, \
+                  key, content) VALUES (?,?,?,?,?,?,?)", (browser_params['crawl_id'], browser_params['visit_id'], cookie.domain,
                                                           cookie.filename, cookie.local_path,
                                                           cookie.key, cookie.content))
         sock.send(query)
@@ -193,9 +193,9 @@ def dump_storage_vectors(top_url, start_time, webdriver, browser_params, manager
     rows = get_cookies(browser_params['profile_path'], start_time)
     if rows is not None:
         for row in rows:
-            query = ("INSERT INTO profile_cookies (crawl_id, page_url, baseDomain, name, value, \
+            query = ("INSERT INTO profile_cookies (crawl_id, visit_id, baseDomain, name, value, \
                       host, path, expiry, accessed, creationTime, isSecure, isHttpOnly) \
-                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (browser_params['crawl_id'], top_url) + row)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (browser_params['crawl_id'], browser_params['visit_id']) + row)
             sock.send(query)
     
     # localStorage - TODO this doesn't have a modified time support
