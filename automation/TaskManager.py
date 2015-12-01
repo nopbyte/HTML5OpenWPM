@@ -317,7 +317,7 @@ class TaskManager:
 
     # CRAWLER COMMAND CODE
 
-    def _distribute_command(self, command_sequence, index=None, timeout=None, reset=False):
+    def _distribute_command(self, command_sequence, index=None):
         """
         parses command type and issues command(s) to the proper browser
         <index> specifies the type of command this is:
@@ -332,8 +332,7 @@ class TaskManager:
             while True:
                 for browser in self.browsers:
                     if browser.ready():
-                        browser.current_timeout = timeout
-                        self._start_thread(browser, command_sequence, reset)
+                        self._start_thread(browser, command_sequence)
                         command_executed = True
                         break
                 if command_executed:
@@ -344,8 +343,7 @@ class TaskManager:
             #send the command to this specific browser
             while True:
                 if self.browsers[index].ready():
-                    self.browsers[index].current_timeout = timeout
-                    self._start_thread(self.browsers[index], command_sequence, reset)
+                    self._start_thread(self.browsers[index], command_sequence)
                     break
                 time.sleep(SLEEP_CONS)
         elif index == '*':
@@ -354,8 +352,7 @@ class TaskManager:
             while False in command_executed:
                 for i in xrange(len(self.browsers)):
                     if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = timeout
-                        self._start_thread(self.browsers[i], command_sequence, reset)
+                        self._start_thread(self.browsers[i], command_sequence)
                         command_executed[i] = True
                 time.sleep(SLEEP_CONS)
         elif index == '**':
@@ -365,8 +362,7 @@ class TaskManager:
             while False in command_executed:
                 for i in xrange(len(self.browsers)):
                     if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = timeout
-                        self._start_thread(self.browsers[i], command_sequence, reset, condition)
+                        self._start_thread(self.browsers[i], command_sequence, condition)
                         command_executed[i] = True
                 time.sleep(SLEEP_CONS)
             with condition:
@@ -374,7 +370,7 @@ class TaskManager:
         else:
             self.logger.info("Command index type is not supported or out of range")
 
-    def _start_thread(self, browser, command_sequence, reset, condition=None):
+    def _start_thread(self, browser, command_sequence, condition=None):
         """  starts the command execution thread """
         
         # Check status flags before starting thread
@@ -391,13 +387,13 @@ class TaskManager:
         self.next_visit_id += 1
 
         # Start command execution thread
-        args = (browser, command_sequence, reset, condition)
+        args = (browser, command_sequence, condition)
         thread = threading.Thread(target=self._issue_command, args=args)
         browser.command_thread = thread
         thread.daemon = True
         thread.start()
 
-    def _issue_command(self, browser, command_sequence, reset, condition=None):
+    def _issue_command(self, browser, command_sequence, condition=None):
         """
         sends command tuple to the BrowserManager
         """
@@ -466,6 +462,9 @@ class TaskManager:
                 self.logger.critical("BROWSER %i: Exceeded the maximum allowable consecutive browser launch failures. Setting failure_flag." % browser.crawl_id)
                 self.failure_flag = True
                 return
+
+    def execute_command_sequence(self, command_sequence, index=None):
+        self._distribute_command(command_sequence, index)
 
     def close(self, post_process=True):
         """

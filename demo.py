@@ -1,4 +1,4 @@
-from automation import TaskManager
+from automation import TaskManager, CommandSequence
 
 # The list of sites that we wish to crawl
 NUM_BROWSERS = 3
@@ -22,9 +22,11 @@ manager_params['log_directory'] = '~/Desktop/'
 # Commands time out by default after 60 seconds
 manager = TaskManager.TaskManager(manager_params, browser_params)
 
+command_sequence = CommandSequence.CommandSequence()
 # Visits the sites with both browsers simultaneously
 for site in sites:
-    manager.get(site, index='**') # ** = synchronized browsers
+    command_sequence.prepare_for_new_sequence(site)
+    manager.execute_command_sequence(command_sequence, index='**') # ** = synchronized browsers
 
 # Shuts down the browsers and waits for the data to finish logging
 manager.close()

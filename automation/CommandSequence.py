@@ -3,7 +3,7 @@ from Errors import CommandExecutionError
 class CommandSequence:
     """A command sequence should be associated with one top url site visit"""
 
-    def __init__(self, url, reset=False):
+    def __init__(self, url=None, reset=False):
         """Nothing to do here"""
         self.url = url
         self.reset = reset
