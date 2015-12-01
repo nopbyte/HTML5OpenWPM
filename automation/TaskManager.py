@@ -408,7 +408,8 @@ class TaskManager:
 
         reset = command_sequence.reset
         start_time = None
-        for command_tuple in command_sequence:
+        commands = command_sequence.commands
+        for command_tuple in commands:
             command, timeout = command_tuple
             if command[0] == 'GET' or command[0] == 'BROWSE':
                 start_time = time.time()

@@ -26,6 +26,7 @@ command_sequence = CommandSequence.CommandSequence()
 # Visits the sites with both browsers simultaneously
 for site in sites:
     command_sequence.prepare_for_new_sequence(site)
+    command_sequence.get()
     manager.execute_command_sequence(command_sequence, index='**') # ** = synchronized browsers
 
 # Shuts down the browsers and waits for the data to finish logging
