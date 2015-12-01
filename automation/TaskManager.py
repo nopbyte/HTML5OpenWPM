@@ -383,7 +383,7 @@ class TaskManager:
             self.logger.debug("TaskManager failure threshold exceeded, raising CommandExecutionError")
             self._gracefully_fail("TaskManager failure threshold exceeded", command_sequence)
 
-        browser.set_visit_id(self.next_visit_id)
+        command_sequence.set_visit_id(self.next_visit_id)
         self.sock.send(("INSERT INTO site_visits (visit_id, crawl_id, site_url) VALUES (?,?,?)",
                         (self.next_visit_id, browser.crawl_id, command_sequence.url)))
         self.next_visit_id += 1
@@ -407,14 +407,16 @@ class TaskManager:
                 condition.wait()
 
         reset = command_sequence.reset
+        visit_id = command_sequence.visit_id
         start_time = None
         commands = command_sequence.commands
         for command_tuple in commands:
             command, timeout = command_tuple
             if command[0] == 'GET' or command[0] == 'BROWSE':
                 start_time = time.time()
+                command += (visit_id,)
             elif command[0] == 'DUMP_STORAGE_VECTORS':
-                command += (start_time,)
+                command += (start_time, visit_id,)
             browser.current_timeout = timeout
             # passes off command and waits for a success (or failure signal)
             browser.command_queue.put(command)

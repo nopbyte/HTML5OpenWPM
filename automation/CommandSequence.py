@@ -6,15 +6,20 @@ class CommandSequence:
     def __init__(self, url=None, reset=False):
         """Nothing to do here"""
         self.url = url
+        self.visit_id = 0
         self.reset = reset
         self.commands = []
         self.contains_get_or_browse = False
 
     def prepare_for_new_sequence(self, url, reset=False):
         self.url = url
+        self.visit_id = 0
         self.reset = reset
         self.commands = []
         self.contains_get_or_browse = False
+
+    def set_visit_id(self, visit_id):
+        self.visit_id = visit_id
 
     def get(self, timeout=60):
         """ goes to a url """

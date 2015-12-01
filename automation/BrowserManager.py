@@ -55,10 +55,6 @@ class Browser:
         """ return if the browser is ready to accept a command """
         return self.command_thread is None or not self.command_thread.is_alive()
 
-    # set the site visit id corresponding to the url this browser visits next
-    def set_visit_id(self, visit_id):
-        self.browser_params['visit_id'] = visit_id
-
     def launch_browser_manager(self, spawn_timeout=120):
         """
         sets up the BrowserManager and gets the process id, browser pid and, if applicable, screen pid
