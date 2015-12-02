@@ -84,7 +84,7 @@ def get_website(url, visit_id, webdriver, proxy_queue, browser_params, extension
         while not proxy_queue.empty():
             time.sleep(0.001)
     if extension_socket is not None:
-        extension_socket.send(url)
+        extension_socket.send(visit_id)
     
     # Execute a get through selenium
     try:
