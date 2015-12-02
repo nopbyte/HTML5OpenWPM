@@ -25,7 +25,7 @@ def encode_to_unicode(msg):
     return msg
 
 
-def process_general_mitm_request(db_socket, browser_params, top_url, msg):
+def process_general_mitm_request(db_socket, browser_params, visit_id, msg):
     """ Logs a HTTP request object """
     referrer = msg.request.headers['referer'][0] if len(msg.request.headers['referer']) > 0 else ''
 
@@ -34,14 +34,14 @@ def process_general_mitm_request(db_socket, browser_params, top_url, msg):
             msg.request.method,
             encode_to_unicode(referrer),
             json.dumps(msg.request.headers.get_state()),
-            browser_params['visit_id'],
+            visit_id,
             str(datetime.datetime.now()))
 
     db_socket.send(("INSERT INTO http_requests (crawl_id, url, method, referrer, headers, "
                     "visit_id, time_stamp) VALUES (?,?,?,?,?,?,?)", data))
 
 
-def process_general_mitm_response(db_socket, ldb_socket, logger, browser_params, top_url, msg):
+def process_general_mitm_response(db_socket, ldb_socket, logger, browser_params, visit_id, msg):
     """ Logs a HTTP response object and, if necessary, """
     referrer = msg.request.headers['referer'][0] if len(msg.request.headers['referer']) > 0 else ''
     location = msg.response.headers['location'][0] if len(msg.response.headers['location']) > 0 else ''
@@ -56,7 +56,7 @@ def process_general_mitm_response(db_socket, ldb_socket, logger, browser_params,
             msg.response.msg,
             json.dumps(msg.response.headers.get_state()),
             encode_to_unicode(location),
-            browser_params['visit_id'],
+            visit_id,
             str(datetime.datetime.now()),
             content_hash)
     

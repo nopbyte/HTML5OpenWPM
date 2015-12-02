@@ -22,10 +22,9 @@ manager_params['log_directory'] = '~/Desktop/'
 # Commands time out by default after 60 seconds
 manager = TaskManager.TaskManager(manager_params, browser_params)
 
-command_sequence = CommandSequence.CommandSequence()
 # Visits the sites with both browsers simultaneously
 for site in sites:
-    command_sequence.prepare_for_new_sequence(site)
+    command_sequence = CommandSequence.CommandSequence(site)
     command_sequence.get()
     manager.execute_command_sequence(command_sequence, index='**') # ** = synchronized browsers
 
