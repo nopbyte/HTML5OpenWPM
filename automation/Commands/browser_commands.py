@@ -91,7 +91,7 @@ def get_website(url, visit_id, webdriver, proxy_queue, browser_params, extension
         webdriver.get(url)
     except TimeoutException:
         pass
-    
+
     # Close modal dialog if exists
     try:
         WebDriverWait(webdriver, .5).until(EC.alert_is_present())

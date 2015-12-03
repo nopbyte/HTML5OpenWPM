@@ -1,10 +1,14 @@
 from automation import TaskManager, CommandSequence
 
 # The list of sites that we wish to crawl
-NUM_BROWSERS = 3
-sites = ['http://www.example.com',
-         'http://www.princeton.edu',
-         'https://citp.princeton.edu/']
+NUM_BROWSERS = 1
+# sites = ['http://www.example.com',
+#          'http://www.princeton.edu',
+#          'https://citp.princeton.edu/',
+#          'http://www.yahoo.com/']
+
+sites = ['http://samy.pl/evercookie/']
+#sites = ['http://www.yahoo.com']
 
 # Loads the manager preference and 3 copies of the default browser dictionaries
 manager_params, browser_params = TaskManager.load_default_params(NUM_BROWSERS)
@@ -12,7 +16,7 @@ manager_params, browser_params = TaskManager.load_default_params(NUM_BROWSERS)
 # Update browser configuration (use this for per-browser settings)
 for i in xrange(NUM_BROWSERS):
     browser_params[i]['disable_flash'] = False #Enable flash for all three browsers
-browser_params[0]['headless'] = True #Launch only browser 0 headless
+browser_params[0]['headless'] = False #Launch only browser 0 headless
 
 # Update TaskManager configuration (use this for crawl-wide settings)
 manager_params['data_directory'] = '~/Desktop/'
@@ -25,7 +29,8 @@ manager = TaskManager.TaskManager(manager_params, browser_params)
 # Visits the sites with both browsers simultaneously
 for site in sites:
     command_sequence = CommandSequence.CommandSequence(site)
-    command_sequence.get()
+    command_sequence.get(120)
+    command_sequence.dump_storage_vectors(120)
     manager.execute_command_sequence(command_sequence, index='**') # ** = synchronized browsers
 
 # Shuts down the browsers and waits for the data to finish logging

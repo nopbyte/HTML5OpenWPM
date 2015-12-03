@@ -303,7 +303,7 @@ class TaskManager:
             else:
                 self.sock.send(("UPDATE crawl SET finished = 1 WHERE crawl_id = ?",
                                 (browser.crawl_id,)))
-        
+
         self.db.close()  # close db connection
         self.sock.close()  # close socket to data aggregator
         self._kill_aggregators()
@@ -334,6 +334,7 @@ class TaskManager:
             while True:
                 for browser in self.browsers:
                     if browser.ready():
+                        browser.current_timeout = command_sequence.total_timeout
                         self._start_thread(browser, command_sequence)
                         command_executed = True
                         break
@@ -345,6 +346,7 @@ class TaskManager:
             #send the command to this specific browser
             while True:
                 if self.browsers[index].ready():
+                    self.browsers[index].current_timeout = command_sequence.total_timeout
                     self._start_thread(self.browsers[index], command_sequence)
                     break
                 time.sleep(SLEEP_CONS)
@@ -354,6 +356,7 @@ class TaskManager:
             while False in command_executed:
                 for i in xrange(len(self.browsers)):
                     if self.browsers[i].ready() and not command_executed[i]:
+                        self.browsers[i].current_timeout = command_sequence.total_timeout
                         self._start_thread(self.browsers[i], command_sequence)
                         command_executed[i] = True
                 time.sleep(SLEEP_CONS)
@@ -364,6 +367,7 @@ class TaskManager:
             while False in command_executed:
                 for i in xrange(len(self.browsers)):
                     if self.browsers[i].ready() and not command_executed[i]:
+                        self.browsers[i].current_timeout = command_sequence.total_timeout
                         self._start_thread(self.browsers[i], command_sequence, condition)
                         command_executed[i] = True
                 time.sleep(SLEEP_CONS)
@@ -374,7 +378,6 @@ class TaskManager:
 
     def _start_thread(self, browser, command_sequence, condition=None):
         """  starts the command execution thread """
-        
         # Check status flags before starting thread
         if self.closing:
             self.logger.error("Attempted to execute command on a closed TaskManager")
@@ -400,7 +403,6 @@ class TaskManager:
         sends command tuple to the BrowserManager
         """
         browser.is_fresh = False  # since we are issuing a command, the BrowserManager is no longer a fresh instance
-        
         # if this is a synced call, block on condition
         if condition is not None:
             with condition:
@@ -437,9 +439,6 @@ class TaskManager:
             self.sock.send(("INSERT INTO CrawlHistory (crawl_id, command, arguments, bool_success)"
                             " VALUES (?,?,?,?)",
                             (browser.crawl_id, command[0], command_arguments, command_succeeded)))
-        
-            if self.closing:
-                return
 
             if command_succeeded != 1:
                 with self.threadlock:
@@ -452,20 +451,20 @@ class TaskManager:
             else:
                 with self.threadlock:
                     self.failurecount = 0
-            
+
             if browser.restart_required:
-                success = browser.restart_browser_manager(clear_profile = reset)
-                if not success:
-                    self.logger.critical("BROWSER %i: Exceeded the maximum allowable consecutive browser launch failures. Setting failure_flag." % browser.crawl_id)
-                    self.failure_flag = True
-                    return
-                browser.restart_required = False
-        if reset:
+                break
+
+        if self.closing:
+            return
+
+        if browser.restart_required or reset:
             success = browser.restart_browser_manager(clear_profile = reset)
             if not success:
                 self.logger.critical("BROWSER %i: Exceeded the maximum allowable consecutive browser launch failures. Setting failure_flag." % browser.crawl_id)
                 self.failure_flag = True
                 return
+            browser.restart_required = False
 
     def execute_command_sequence(self, command_sequence, index=None):
         self._distribute_command(command_sequence, index)
