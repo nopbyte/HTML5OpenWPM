@@ -303,7 +303,6 @@ class TaskManager:
             else:
                 self.sock.send(("UPDATE crawl SET finished = 1 WHERE crawl_id = ?",
                                 (browser.crawl_id,)))
-
         self.db.close()  # close db connection
         self.sock.close()  # close socket to data aggregator
         self._kill_aggregators()
@@ -378,6 +377,7 @@ class TaskManager:
 
     def _start_thread(self, browser, command_sequence, condition=None):
         """  starts the command execution thread """
+
         # Check status flags before starting thread
         if self.closing:
             self.logger.error("Attempted to execute command on a closed TaskManager")
@@ -403,6 +403,7 @@ class TaskManager:
         sends command tuple to the BrowserManager
         """
         browser.is_fresh = False  # since we are issuing a command, the BrowserManager is no longer a fresh instance
+
         # if this is a synced call, block on condition
         if condition is not None:
             with condition:

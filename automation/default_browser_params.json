@@ -1,16 +1,16 @@
 {
     "proxy": true,
     "extension": {
-        "enabled": true,
-        "cookieInstrument": true,
-	"jsInstrument": true,
+        "enabled": false,
+        "cookieInstrument": false,
+	"jsInstrument": false,
         "cpInstrument": false
     },
-    "save_javascript": true,
+    "save_javascript": false,
     
     "random_attributes": false,
     "bot_mitigation": false,
-    "disable_flash": false,
+    "disable_flash": true,
     "debugging": false,
     "profile_tar": null,
     "headless": false,
