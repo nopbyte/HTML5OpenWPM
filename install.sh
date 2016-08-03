@@ -5,7 +5,7 @@
 set -e
 flash=false
 sudo apt-get update
-sudo apt-get install -y firefox htop git python-dev libxml2-dev libxslt-dev libffi-dev libssl-dev build-essential xvfb libboost-python-dev libleveldb1 libleveldb-dev libjpeg-dev
+sudo apt-get install -y firefox htop git python-dev libxml2-dev libxslt-dev libffi-dev libssl-dev build-essential xvfb libboost-python-dev libleveldb1 libleveldb-dev libjpeg-dev wget
 if [ "$flash" = true ]; then
     sudo apt-get install -y adobe-flashplugin
 fi
