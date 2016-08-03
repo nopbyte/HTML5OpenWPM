@@ -1,22 +1,10 @@
 #!/bin/bash
+# This file has been modified so that it can be automatically executed without user interaction.
+# NOw we rely on the flash variable instead of the answer from a user...
+#
 set -e
-
-echo "Would you like to install Adobe Flash Player? (Only required for crawls with Flash) [y,N]"
-read -s -n 1 response
-if [[ $response = "" ]] || [ $response == 'n' ] || [ $response == 'N' ]; then
-    flash=false
-    echo Not installing Adobe Flash Plugin
-elif [ $response == 'y' ] || [ $response == 'Y' ]; then
-    flash=true
-    echo Installing Adobe Flash Plugin
-    sudo sh -c 'echo "deb http://archive.canonical.com/ubuntu/ trusty partner" >> /etc/apt/sources.list.d/canonical_partner.list'
-else
-    echo Unrecognized response, exiting
-    exit 1
-fi
-
+flash=false
 sudo apt-get update
-
 sudo apt-get install -y firefox htop git python-dev libxml2-dev libxslt-dev libffi-dev libssl-dev build-essential xvfb libboost-python-dev libleveldb1 libleveldb-dev libjpeg-dev
 if [ "$flash" = true ]; then
     sudo apt-get install -y adobe-flashplugin
